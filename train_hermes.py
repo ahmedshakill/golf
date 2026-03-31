@@ -1223,6 +1223,12 @@ def train(cfg: HermesConfig, train_path: str, val_path: str,
                             dtype=dtype, enabled=(device == 'cuda')):
             _, loss = model(x, y)
 
+        if not torch.isfinite(loss.detach()):
+            raise RuntimeError(
+                f"Non-finite loss at step {step} (loss={loss.item()}). "
+                "Try a smaller --lr, smaller --ode_steps, or safer dtype settings."
+            )
+
         # Backward
         optimizer.zero_grad(set_to_none=True)
         muon_opt.zero_grad(set_to_none=True)
@@ -1523,6 +1529,8 @@ if __name__ == "__main__":
     parser.add_argument("--seq_len",    type=int, default=512,  help="Sequence length")
     parser.add_argument("--batch",      type=int, default=4,    help="Batch size")
     parser.add_argument("--steps",      type=int, default=5000, help="Training steps")
+    parser.add_argument("--lr",         type=float, default=None,
+                        help="Override learning rate")
     parser.add_argument("--dtype", choices=["float32", "float16", "bfloat16"], default=None,
                         help="Override compute dtype (default auto-detects by GPU generation)")
     parser.add_argument("--num_workers", type=int, default=0,
@@ -1549,6 +1557,7 @@ if __name__ == "__main__":
         seq_len     = args.seq_len,
         batch_size  = args.batch,
         max_steps   = args.steps,
+        lr          = args.lr if args.lr is not None else HermesConfig.lr,
         dtype       = args.dtype or detect_default_dtype(),
         num_workers = args.num_workers,
         use_int6_qat= not args.no_quant,
