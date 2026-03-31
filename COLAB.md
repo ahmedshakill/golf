@@ -2,12 +2,13 @@
 
 Use [colab/hermes_google_colab.ipynb](/home/shakilahmed/work/code/golf/colab/hermes_google_colab.ipynb) to run HERMES on a Colab GPU while keeping `data/`, `checkpoints/`, and `runs/` on Google Drive.
 
-The notebook does four things:
+The notebook does five things:
 
 1. Mounts Google Drive.
 2. Clones this repo from GitHub into `/content/golf`.
 3. Symlinks Drive-backed storage into the repo so checkpoints survive runtime resets.
 4. Runs the same training command you used locally, including `--resume latest`.
+5. Optionally configures authenticated git push from Colab with a notebook variable.
 
 Recommended Colab path layout:
 
@@ -36,5 +37,6 @@ Notes:
 
 - Colab already includes PyTorch, so the notebook only installs the dataset-related Python packages.
 - The notebook clones `https://github.com/ahmedshakill/golf.git` directly.
+- Set `GITHUB_TOKEN` at the top of the notebook if you want Colab to push changes back to GitHub.
 - Training code stays unchanged; Colab uses the existing `--train_path`, `--val_path`, `--checkpoint_dir`, and `--resume` flags.
 - Keep the repo on `/content` for speed and store artifacts on Drive for persistence.
