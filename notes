@@ -1,0 +1,38 @@
+Two separate issues were happening.
+
+In [train_hermes.py](/home/shakilahmed/work/code/golf/train_hermes.py), the loader only recognized `data/fineweb_train` and internally appended `.bin`. When you passed `data/fineweb_train.bin`, it looked for `.bin.bin`, missed it, and then tried to read the binary file as UTF-8 text. I fixed that, so both of these now work:
+```bash
+--train_path data/fineweb_train
+--train_path data/fineweb_train.bin
+```
+
+In [prepare_fineweb.py](/home/shakilahmed/work/code/golf/prepare_fineweb.py), I replaced the crashy one-off bin writer with a safer prep script that can generate either:
+- plain text files: `data/fineweb_train`, `data/fineweb_val`
+- token bins: `data/fineweb_train.bin`, `data/fineweb_val.bin`
+
+If you want the safest path right now, use the text files you already have:
+```bash
+python3 train_hermes.py \
+  --run_name hermes_v1_fineweb \
+  --train_path data/fineweb_train \
+  --val_path data/fineweb_val \
+  --batch 16 \
+  --steps 10000
+```
+
+If you want bin files, regenerate them with the new script:
+```bash
+python3 prepare_fineweb.py --subset CC-MAIN-2024-10 --format bin --train-mb 64 --val-mb 8
+```
+
+Then train with:
+```bash
+python3 train_hermes.py \
+  --run_name hermes_v1_fineweb \
+  --train_path data/fineweb_train.bin \
+  --val_path data/fineweb_val.bin \
+  --batch 16 \
+  --steps 10000
+```
+
+One important correction: do not use `data/fineweb_train.bin` for both train and val unless you are only smoke-checking the pipeline. For any real comparison, keep validation separate.
