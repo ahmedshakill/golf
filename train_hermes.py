@@ -536,7 +536,8 @@ class SheafAttention(nn.Module):
         causal = self._get_causal_mask(T, x.device)
         scores = scores.masked_fill(causal.unsqueeze(0).unsqueeze(0), float('-inf'))
 
-        attn = F.softmax(scores, dim=-1)
+        # float16 softmax on T4 is prone to overflow once training warms up.
+        attn = F.softmax(scores.float(), dim=-1).to(V.dtype)
 
         # Weighted aggregation
         out = torch.matmul(attn, V)  # (B, h, T, s)
@@ -782,7 +783,7 @@ class HermesModel(nn.Module):
             return logits, None
 
         loss = F.cross_entropy(
-            logits.view(-1, self.cfg.vocab_size),
+            logits.float().view(-1, self.cfg.vocab_size),
             targets.view(-1),
             ignore_index=-1
         )
@@ -829,7 +830,8 @@ class Muon(torch.optim.Optimizer):
         """
         assert G.ndim >= 2
         a, b, c = (3.4445, -4.7750, 2.0315)
-        X = G.bfloat16() / (G.norm() + 1e-7)
+        # Keep the orthogonalization path in fp32 for stability on pre-Ampere GPUs.
+        X = G.float() / (G.float().norm() + 1e-7)
         if G.size(0) > G.size(1):
             X = X.T
         for _ in range(steps):
@@ -838,7 +840,7 @@ class Muon(torch.optim.Optimizer):
             X = a * X + B @ X
         if G.size(0) > G.size(1):
             X = X.T
-        return X
+        return X.to(G.dtype)
 
     @torch.no_grad()
     def step(self):
@@ -984,7 +986,7 @@ def evaluate_bpb(model: nn.Module, data, cfg: HermesConfig, tokenizer: MicroBPE,
             if window_bytes == 0:
                 continue
             loss = F.cross_entropy(
-                logits[0, score_start:].view(-1, cfg.vocab_size),
+                logits[0, score_start:].float().view(-1, cfg.vocab_size),
                 y[0, score_start:].view(-1),
                 reduction='sum'
             )
