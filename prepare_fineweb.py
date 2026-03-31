@@ -15,12 +15,19 @@ from datasets import load_dataset
 from train_hermes import MicroBPE
 
 
-def iter_text_samples(subset: str):
+def resolve_hf_token(cli_token: str | None) -> str | None:
+    if cli_token:
+        return cli_token
+    return os.environ.get("HF_TOKEN") or os.environ.get("HF_TOKEN")
+
+
+def iter_text_samples(subset: str, hf_token: str | None = None):
     dataset = load_dataset(
         "HuggingFaceFW/fineweb",
         name=subset,
         split="train",
         streaming=True,
+        token=hf_token,
     )
     for sample in dataset:
         text = sample.get("text", "").strip()
@@ -91,14 +98,18 @@ def main():
                         help="Approximate train split size in MiB")
     parser.add_argument("--val-mb", type=int, default=8,
                         help="Approximate validation split size in MiB")
+    parser.add_argument("--hf_token", default=None,
+                        help="Optional Hugging Face token. Falls back to HF_TOKEN or HUGGINGFACE_HUB_TOKEN env vars.")
     args = parser.parse_args()
 
     default_train, default_val = default_outputs(args.format)
     train_out = args.train_out or default_train
     val_out = args.val_out or default_val
 
+    hf_token = resolve_hf_token(args.hf_token)
+
     print(f"[FineWeb] Streaming subset={args.subset} format={args.format}")
-    samples = iter_text_samples(args.subset)
+    samples = iter_text_samples(args.subset, hf_token=hf_token)
 
     if args.format == "text":
         train_docs, train_bytes = write_text_split(samples, train_out, args.train_mb * 1024 * 1024)
