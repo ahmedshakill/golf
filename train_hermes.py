@@ -50,9 +50,11 @@ def detect_default_device() -> str:
 def detect_default_dtype() -> str:
     if not torch.cuda.is_available():
         return "float32"
-    bf16_supported = getattr(torch.cuda, "is_bf16_supported", None)
-    if callable(bf16_supported) and bf16_supported():
-        return "bfloat16"
+    get_capability = getattr(torch.cuda, "get_device_capability", None)
+    if callable(get_capability):
+        major, _minor = get_capability()
+        if major >= 8:
+            return "bfloat16"
     return "float16"
 
 
@@ -119,6 +121,7 @@ class HermesConfig:
     grad_clip:        float = 1.0
     ema_decay:        float = 0.9999     # EMA for eval weights
     activation_checkpointing: bool = True
+    num_workers:      int   = 0          # Raise on larger GPUs / Colab for faster host-side loading
 
     # Eval
     eval_stride:      int   = 64         # Sliding window stride (BPB gain)
@@ -1094,6 +1097,13 @@ def train(cfg: HermesConfig, train_path: str, val_path: str,
     device = cfg.device
     dtype = getattr(torch, cfg.dtype)
 
+    if device == "cuda":
+        torch.backends.cudnn.benchmark = True
+        major, _minor = torch.cuda.get_device_capability()
+        if major >= 8:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
     print(f"\n{'='*60}")
     print(f"  HERMES — Parameter Golf Submission")
     print(f"  Device: {device} | Dtype: {cfg.dtype}")
@@ -1161,8 +1171,14 @@ def train(cfg: HermesConfig, train_path: str, val_path: str,
         else:
             val_data = torch.randint(0, active_vocab, (100_000,), dtype=torch.int64)
 
-    loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
-                        num_workers=0, pin_memory=(device == 'cuda'))
+    loader = DataLoader(
+        train_ds,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=cfg.num_workers,
+        pin_memory=(device == 'cuda'),
+        persistent_workers=(cfg.num_workers > 0),
+    )
 
     scaler = build_grad_scaler(device, enabled=(device == 'cuda' and cfg.dtype == 'float16'))
 
@@ -1192,7 +1208,8 @@ def train(cfg: HermesConfig, train_path: str, val_path: str,
             loader_iter = iter(loader)
             x, y = next(loader_iter)
 
-        x, y = x.to(device), y.to(device)
+        x = x.to(device, non_blocking=(device == "cuda"))
+        y = y.to(device, non_blocking=(device == "cuda"))
 
         # LR update
         lr_scale = get_lr(step)
@@ -1504,8 +1521,14 @@ if __name__ == "__main__":
     parser.add_argument("--seq_len",    type=int, default=512,  help="Sequence length")
     parser.add_argument("--batch",      type=int, default=4,    help="Batch size")
     parser.add_argument("--steps",      type=int, default=5000, help="Training steps")
+    parser.add_argument("--dtype", choices=["float32", "float16", "bfloat16"], default=None,
+                        help="Override compute dtype (default auto-detects by GPU generation)")
+    parser.add_argument("--num_workers", type=int, default=0,
+                        help="DataLoader worker count")
     parser.add_argument("--no_quant",   action="store_true",    help="Disable int6 QAT")
     parser.add_argument("--ode_steps",  type=int, default=6,    help="ODE recurrence steps")
+    parser.add_argument("--compile", action="store_true",
+                        help="Enable torch.compile(max-autotune)")
     parser.add_argument("--no_activation_checkpointing", action="store_true",
                         help="Disable activation checkpointing for the recurrent ODE block")
     parser.add_argument("--serialize",  action="store_true",    help="Pack to submission.py")
@@ -1524,8 +1547,11 @@ if __name__ == "__main__":
         seq_len     = args.seq_len,
         batch_size  = args.batch,
         max_steps   = args.steps,
+        dtype       = args.dtype or detect_default_dtype(),
+        num_workers = args.num_workers,
         use_int6_qat= not args.no_quant,
         ode_steps   = args.ode_steps,
+        compile     = args.compile,
         activation_checkpointing=not args.no_activation_checkpointing,
     )
 
