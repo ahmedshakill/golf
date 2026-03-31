@@ -5,7 +5,7 @@ Use [colab/hermes_google_colab.ipynb](/home/shakilahmed/work/code/golf/colab/her
 The notebook does four things:
 
 1. Mounts Google Drive.
-2. Loads this repo into `/content/golf` from either a GitHub URL or a Drive copy of the repo.
+2. Clones this repo from GitHub into `/content/golf`.
 3. Symlinks Drive-backed storage into the repo so checkpoints survive runtime resets.
 4. Runs the same training command you used locally, including `--resume latest`.
 
@@ -13,13 +13,10 @@ Recommended Colab path layout:
 
 ```text
 MyDrive/golf-colab/
-  repo/
   data/
   checkpoints/
   runs/
 ```
-
-If this repo is not on GitHub yet, copy the current repo into `MyDrive/golf-colab/repo/` before opening the notebook. The notebook can use that Drive copy directly.
 
 If you already have local checkpoints you want in Colab, upload them into:
 
@@ -38,5 +35,6 @@ python prepare_fineweb.py --subset CC-MAIN-2024-10 --format text --train-mb 64 -
 Notes:
 
 - Colab already includes PyTorch, so the notebook only installs the dataset-related Python packages.
+- The notebook clones `https://github.com/ahmedshakill/golf.git` directly.
 - Training code stays unchanged; Colab uses the existing `--train_path`, `--val_path`, `--checkpoint_dir`, and `--resume` flags.
 - Keep the repo on `/content` for speed and store artifacts on Drive for persistence.
